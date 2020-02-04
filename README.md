@@ -4,10 +4,14 @@ Scripts to help determine a companies stock mood
 
 ## How to Run
 
-### StockMood
+### Controllers
 
-`python3 run.py`
+1. Dividends
+2. Nasdaq
+3. Yahoo_Finance
+4. StockMood
+5. StockFinder
 
-### Dividend Scraping
+### Current Architecture
 
-`node index.js`
+![alt text](Architecture.png)
