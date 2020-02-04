@@ -1,0 +1,27 @@
+{
+  "name": "stockmood",
+  "version": "1.0.0",
+  "description": "Predicting stocks",
+  "main": "index.js",
+  "scripts": {
+    "prod": "NODE_ENV=production node index",
+    "dev": "nodemon index"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pkorianski/StockMood.git"
+  },
+  "author": "Patrick M. Korianski",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pkorianski/StockMood/issues"
+  },
+  "homepage": "https://github.com/pkorianski/StockMood#readme",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.2"
+  }
+}

@@ -1,2 +1,2 @@
-/node_modules
-basic_material_stocks.json
+node_modules
+config/config.env

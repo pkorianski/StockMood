@@ -2,8 +2,6 @@
 
 Scripts to help determine a companies stock mood
 
-## How to Run
-
 ### Controllers
 
 1. Dividends
