@@ -1,6 +1,9 @@
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 
+// @desc Get Yahoo Fianance data
+// @route GET /api/v1/yahoo_finance
+// @access Public
 exports.getYahooFinance = async (req, res, next) => {
   let recommended_symbols = await fetch(
     `https://query2.finance.yahoo.com/v6/finance/recommendationsbysymbol/${req.body.stock_symbol}?`,

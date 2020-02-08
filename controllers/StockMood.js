@@ -1,6 +1,9 @@
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 
+// @desc Get Yahoo Finance Breaking News data
+// @route GET /api/v1/stockmood/yahoo/breakingnews
+// @access Public
 exports.yahooBreakingNews = async (req, res, next) => {
   let count = (await req.body.count) || 100;
   let breaking_news = await fetch(
