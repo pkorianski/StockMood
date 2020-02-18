@@ -2,6 +2,43 @@ const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 const Sentiment = require("sentiment");
 const Twitter = require("twitter");
+const { StaticPool } = require("node-worker-threads-pool");
+
+// Method to analyze a news articles mood
+// Input: link: News article link
+// OUTPUT: Object containing mood score, comparative score, emoji, and article text data
+const stockMoodNewsAnalyzer = async link => {
+  const browser = await puppeteer.launch();
+  const pageTest = await browser.newPage();
+  await pageTest.goto(link);
+  let articleTxt = "";
+
+  // Get paragraph tags from article
+  const pTags = await pageTest.$$("p");
+
+  const getParagraphs = async p => {
+    let paragraphData = await p.getProperty("textContent");
+    let paragraphTxt = await paragraphData.jsonValue();
+    return paragraphTxt.trim();
+  };
+
+  // Concatenate all articleTxt to analyze
+  for (let p of pTags) {
+    articleTxt += await getParagraphs(p);
+  }
+
+  // Stockmood
+  let sm = stockMood(articleTxt);
+
+  browser.close();
+
+  return {
+    link,
+    score: sm.score,
+    comparative: sm.comparative,
+    mood: sm.mood
+  };
+};
 
 // @desc Get Yahoo Finance Breaking News data
 // @route GET /api/v1/stockmood/yahoo/breakingnews
@@ -71,13 +108,36 @@ exports.googleNews = async (req, res, next) => {
   await page.goto(page2Link);
   await getAllLinks(page);
 
-  let result = {
-    symbol: req.body.stock_symbol,
-    links: links
-  };
+  // // Results
+  // let mood_scores = [];
+  // let mood_comparative_scores = [];
+  // let results = [];
+
+  // // Go through each link and analyze articles mood
+  // for (let link of links) {
+  //   let linkStockMood = await stockMoodNewsAnalyzer(link);
+  //   mood_scores.push(linkStockMood.score);
+  //   mood_comparative_scores.push(linkStockMood.comparative);
+  //   results.push(linkStockMood);
+  // }
+
+  // NEW Article moods
+  let moods_result = await worker_pool_moods(links);
+  console.log(moods_result);
 
   browser.close();
-  res.status(200).json({ success: true, data: result });
+  res.status(200).json({
+    success: true,
+    data: {
+      link_count: links.length,
+      avg_score_mood:
+        "mood_scores.reduce((a, b) => a + b) / mood_scores.length",
+      avg_comparative_mood:
+        "mood_comparative_scores.reduce((a, b) => a + b) / \
+        mood_comparative_scores.length"
+      // results
+    }
+  });
 };
 
 // @desc Get Bing News for Stock or Market
@@ -135,96 +195,90 @@ exports.retrieveTweets = async (req, res, next) => {
     access_token_secret: process.env.TWITTER_ACCESS_TOKEN_SECRET
   });
 
-  // Method to call Twitter API to search for Tweets
-  const getTwitterData = q => {
-    let res = client
-      .get("search/tweets", { q: q, count: 100, result_type: "mixed" })
-      .then(tweet => {
-        // Build results by using an object to remove duplicate tweets
-        let results = {};
-        tweet.statuses.forEach(i => {
-          results[i.text] = 1;
-        });
-        return Object.keys(results);
-      })
-      .catch(error => {
-        throw error;
-      });
-
-    return res;
-  };
+  // Initialize tweetwords
+  let tweetWords = {};
 
   // Converting company name to tweetable search terms
-  let company_name = req.body.company_name.split(" ");
-  let tweetWords = {};
-  for (let w of company_name) {
-    if (
-      !["the", "inc", "inc.", "a", "company", ","].includes(w.toLowerCase())
-    ) {
-      tweetWords[w] = 1;
+  if (req.body.type === "company") {
+    // Check for Twitter handle, if found add to tweetWoods
+    let twitter_handle = await getCompanyTwitterHandle(
+      client,
+      req.body.company_name
+    );
+    twitter_handle && (tweetWords[twitter_handle] = 1);
+
+    // Find all words in company name
+    let company_name = req.body.company_name.split(" ");
+    for (let w of company_name) {
+      if (
+        !["the", "inc", "inc.", "a", "company", ","].includes(w.toLowerCase())
+      ) {
+        tweetWords[w] = 1;
+      }
     }
+
+    // Add remaning words + convert to iterable list
+    tweetWords[req.body.company_name] = 1;
+    tweetWords[req.body.stock_symbol] = 1;
+    tweetWords = Object.keys(tweetWords);
+  } else if (req.body.type === "market") {
+    let industry_name = req.body.industry.split(" ");
+    let sector_name = req.body.sector.split(" ");
+    for (let w of industry_name) {
+      if (
+        !["the", "inc", "inc.", "a", "company", ","].includes(w.toLowerCase())
+      ) {
+        tweetWords[w] = 1;
+      }
+    }
+
+    for (let w of sector_name) {
+      if (
+        !["the", "inc", "inc.", "a", "company", ","].includes(w.toLowerCase())
+      ) {
+        tweetWords[w] = 1;
+      }
+    }
+
+    // Add remaning words + convert to iterable list
+    tweetWords[req.body.industry] = 1;
+    tweetWords[req.body.sector] = 1;
+    tweetWords = Object.keys(tweetWords);
   }
-
-  tweetWords = Object.keys(tweetWords);
-  tweetWords.push(req.body.company_name);
-
-  // Call Twitter API on all tweetable terms
-  const findAllTweets = async tw => {
-    let tweets = [];
-    for (let w of tw) {
-      let incoming_tweets = await getTwitterData(w);
-      tweets.push(...incoming_tweets);
-    }
-    return tweets;
-  };
 
   // Gathering results
-  let result = await findAllTweets(tweetWords);
+  let result = await findAllTweets(client, tweetWords);
   let count = result.length;
+  let tweet_comparatives = [];
+  let tweet_scores = [];
 
-  res.status(200).json({
-    success: true,
-    tweet_count: count,
-    data: result
-  });
-};
-
-exports.stockMoodAnalyzer = async (req, res, next) => {
-  const browser = await puppeteer.launch();
-  const pageTest = await browser.newPage();
-  await pageTest.goto(req.body.link);
-  let articleTxt = "";
-
-  // Get paragraph tags from article
-  const pTags = await pageTest.$$("p");
-
-  const getParagraphs = async p => {
-    let paragraphData = await p.getProperty("textContent");
-    let paragraphTxt = await paragraphData.jsonValue();
-    return paragraphTxt.trim();
-  };
-
-  // Concatenate all articleTxt to analyze
-  for (let p of pTags) {
-    articleTxt += await getParagraphs(p);
+  // Tweet Stockmood
+  let tweetMoods = [];
+  for (let tweet of result) {
+    let mood = stockMood(tweet);
+    tweet_comparatives.push(mood.comparative * 100);
+    tweet_scores.push(mood.score);
+    tweetMoods.push({
+      tweet,
+      mood
+    });
   }
 
-  // Stockmood
-  let sm = stockMood(articleTxt);
-
-  browser.close();
   res.status(200).json({
     success: true,
-    result: {
-      score: sm.score,
-      comparative: sm.comparative
-    },
-    mood: sm.mood,
-    data: articleTxt
+    data: {
+      tweetWords,
+      tweet_count: count,
+      avg_score_mood:
+        tweet_scores.reduce((a, b) => a + b) / tweet_scores.length,
+      avg_comparative_mood:
+        tweet_comparatives.reduce((a, b) => a + b) / tweet_comparatives.length,
+      result: tweetMoods
+    }
   });
 };
 
-// Method not API
+// Method to analyze texts mood
 // INPUT: Any string
 // OUTPUT: Mood score, comparative score, and emoji based on score as an Object
 const stockMood = text => {
@@ -247,5 +301,118 @@ const stockMood = text => {
     score: result.score,
     comparative: result.comparative,
     mood: finalMood
+  };
+};
+
+// Method to receive Company Twitter Handle
+// Input: c: Twitter client, name: Company name
+// Output: Company Twitter Handle
+const getCompanyTwitterHandle = async (c, name) => {
+  let res = c
+    .get("users/search", { q: name, count: 10 })
+    .then(users => {
+      return users ? users[0].screen_name : "";
+    })
+    .catch(error => {
+      throw error;
+    });
+  return res;
+};
+
+// Method to call Twitter API to search for Tweets
+// Input: c: Twitter client, q: Tweet query
+// Ouput: List of links
+const getTwitterData = (c, q) => {
+  let res = c
+    .get("search/tweets", { q: q, count: 100, result_type: "mixed" })
+    .then(tweet => {
+      // Build results by using an object to remove duplicate tweets
+      let results = {};
+      tweet.statuses.forEach(i => {
+        results[i.text] = 1;
+      });
+      return Object.keys(results);
+    })
+    .catch(error => {
+      throw error;
+    });
+
+  return res;
+};
+
+// Method to call Twitter API on all tweetable terms
+// Input: c: Twitter client, tw: Tweet words
+// Output: List of all tweets for all tweet words
+const findAllTweets = async (c, tw) => {
+  let tweets = [];
+  for (let w of tw) {
+    let incoming_tweets = await getTwitterData(c, w);
+    tweets.push(...incoming_tweets);
+  }
+  return tweets;
+};
+
+// Trial workerr pool threads
+const worker_pool_moods = async l => {
+  // // Results
+  let mood_scores = [];
+  let mood_comparative_scores = [];
+  let results = [];
+
+  const pool = new StaticPool({
+    size: 2,
+    task: async function(link) {
+      const browser = await puppeteer.launch();
+      const pageTest = await browser.newPage();
+      await pageTest.goto(link);
+      let articleTxt = "";
+
+      // Get paragraph tags from article
+      const pTags = await pageTest.$$("p");
+
+      const getParagraphs = async p => {
+        let paragraphData = await p.getProperty("textContent");
+        let paragraphTxt = await paragraphData.jsonValue();
+        return paragraphTxt.trim();
+      };
+
+      // Concatenate all articleTxt to analyze
+      for (let p of pTags) {
+        articleTxt += await getParagraphs(p);
+      }
+
+      // Stockmood
+      let sm = stockMood(articleTxt);
+
+      browser.close();
+
+      return {
+        link,
+        score: sm.score,
+        comparative: sm.comparative,
+        mood: sm.mood
+      };
+    },
+    workerData: "workerData!"
+  });
+
+  // // Go through each link and analyze articles mood
+  for (let link of l) {
+    await (async () => {
+      const linkStockMood = await pool.exec(link);
+      // mood_scores.push(linkStockMood.score);
+      // mood_comparative_scores.push(linkStockMood.comparative);
+      results.push(linkStockMood);
+    })();
+    // let linkStockMood = await stockMoodNewsAnalyzer(link);
+    // mood_scores.push(linkStockMood.score);
+    // mood_comparative_scores.push(linkStockMood.comparative);
+    // results.push(linkStockMood);
+  }
+
+  return {
+    mood_scores,
+    mood_comparative_scores,
+    results
   };
 };
