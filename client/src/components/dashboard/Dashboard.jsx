@@ -8,6 +8,8 @@ import MyStocks from "./MyStocks";
 const Dashboard = props => {
   return (
     <Fragment>
+      <h1>Hello</h1>
+
       {/* <div className="container-fluid">
         <div className="row">
           <nav className="col-md-2 d-none d-md-block bg-light sidebar">

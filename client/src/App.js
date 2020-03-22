@@ -1,6 +1,7 @@
 import React, { Fragment } from "react";
 import { Provider } from "react-redux";
 import { BrowserRouter as Router, Route, Switch } from "react-router-dom";
+import { Container, Row, Col } from "reactstrap";
 import store from "./store";
 import "./App.css";
 import SMNavbar from "./components/layout/SMNavbar";
@@ -12,11 +13,15 @@ function App() {
     <Provider store={store}>
       <Router>
         <Fragment>
-          <SMNavbar />
-          <SMSidebar />
-          <Switch>
-            <Route exact path="/" component={Dashboard} />
-          </Switch>
+          <Container fluid="xl">
+            <Row>
+              <SMNavbar />
+              <SMSidebar />
+              <Switch>
+                <Route exact path="/" component={Dashboard} />
+              </Switch>
+            </Row>
+          </Container>
         </Fragment>
       </Router>
     </Provider>

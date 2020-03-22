@@ -17,10 +17,6 @@ const SMSidebar = () => {
     ["Settings", <Users className="feather" />, "/account-settings"]
   ];
 
-  //   const handleSelect = key => {
-  //     event.preventDefault();
-  //   };
-
   const createNavSection = s => (
     <NavItem key={s[0]}>
       <NavLink href={s[2]} className={s[0] === activeSection ? "active" : ""}>
